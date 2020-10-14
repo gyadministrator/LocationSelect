@@ -1,9 +1,5 @@
 package com.android.locationselect;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.recyclerview.widget.LinearLayoutManager;
-
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Bitmap;
@@ -22,8 +18,11 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.ListView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.amap.api.location.AMapLocation;
 import com.amap.api.location.AMapLocationClient;
@@ -101,6 +100,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
             @Override
             public void afterTextChanged(Editable s) {
+                isFirst=false;
                 isRefresh = true;
                 getPoi(mapLocation);
             }
@@ -193,7 +193,6 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         if (isFirst && aMapLocation != null) {
             poiSearch.setBound(new PoiSearch.SearchBound(new LatLonPoint(aMapLocation.getLatitude(),
                     aMapLocation.getLongitude()), 1000));//设置周边搜索的中心点以及半径
-            isFirst = false;
         }
         poiSearch.searchPOIAsyn();
         poiSearch.setOnPoiSearchListener(this);
@@ -239,7 +238,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         requestCode = intent.getIntExtra("requestCode", 0);
     }
 
-    public void startActivity(Activity activity, int requestCode, String jsonKey) {
+    public static void startActivity(Activity activity, int requestCode, String jsonKey) {
         Intent intent = new Intent(activity, LocationActivity.class);
         intent.putExtra("jsonKey", jsonKey);
         intent.putExtra("requestCode", requestCode);
@@ -367,6 +366,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
     @Override
     public void clickItem(PoiItem poiItem) {
+        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(poiItem.getLatLonPoint().getLatitude(), poiItem.getLatLonPoint().getLongitude()), 20));
         isClick = true;
         locationEntity = poiToLocationItem(poiItem);
     }
