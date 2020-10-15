@@ -1,12 +1,15 @@
 package com.android.locationselect;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
@@ -15,6 +18,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.CycleInterpolator;
+import android.view.animation.Interpolator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -22,6 +27,8 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 
 import com.amap.api.location.AMapLocation;
@@ -32,12 +39,13 @@ import com.amap.api.maps.AMap;
 import com.amap.api.maps.CameraUpdateFactory;
 import com.amap.api.maps.LocationSource;
 import com.amap.api.maps.MapView;
-import com.amap.api.maps.UiSettings;
+import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.Circle;
 import com.amap.api.maps.model.CircleOptions;
 import com.amap.api.maps.model.LatLng;
+import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
-import com.amap.api.maps.model.MyLocationStyle;
 import com.amap.api.services.core.LatLonPoint;
 import com.amap.api.services.core.PoiItem;
 import com.amap.api.services.poisearch.PoiResult;
@@ -50,8 +58,10 @@ import com.google.gson.Gson;
 import com.jcodecraeer.xrecyclerview.XRecyclerView;
 
 import java.util.ArrayList;
+import java.util.Timer;
+import java.util.TimerTask;
 
-public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener {
+public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener, AMap.OnMapLoadedListener, AMap.OnMapClickListener, AMapLocationListener {
     private MapView mapView;
     private Button btnBack;
     private Button btnOk;
@@ -61,29 +71,56 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     private int requestCode;
     private LocationEntity locationEntity;
     private String jsonKey;
-    private AMap aMap;
-    private UiSettings uiSettings;
-    private AMapLocationClient aMapLocationClient;
-    private AMapLocationClientOption aMapLocationClientOption;
-    private LocationSource.OnLocationChangedListener locationChangedListener;
     private int page = 1;
     private boolean isFirst = true;
     private boolean isRefresh = true;
-    private AMapLocation mapLocation;
+    private AMapLocation currentMapLocation;
+    private AMapLocation tempMapLocation;
     private LocationItemAdapter locationItemAdapter;
     private boolean isClick = false;
+    private String address;
+    private AMap aMap;
+    private AMapLocationClient mLocationClient;
+    private OnLocationChangedListener mListener;
+
+    private Marker locMarker;
+    private Circle ac;
+    private Circle c;
+    private long start;
+    private final Interpolator interpolator = new CycleInterpolator(1);
+    private TimerTask mTimerTask;
+    private Timer mTimer = new Timer();
+    private double lat;
+    private double lng;
+    private String[] permissions = new String[]{Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.READ_EXTERNAL_STORAGE,
+            Manifest.permission.READ_PHONE_STATE};
+    private int permissionCode = 1001;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_location);
         fullScreen(R.color.white);
+        requestPermission();
         initView();
         initData();
-        initMap();
         //在activity执行onCreate时执行mMapView.onCreate(savedInstanceState)，创建地图
         mapView.onCreate(savedInstanceState);
+        initMap();
         initSearch();
+    }
+
+    private void requestPermission() {
+        for (String s : permissions) {
+            if (ContextCompat.checkSelfPermission(this, s)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, permissions,
+                        permissionCode);
+            }
+        }
     }
 
     private void initSearch() {
@@ -100,9 +137,16 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
             @Override
             public void afterTextChanged(Editable s) {
-                isFirst=false;
-                isRefresh = true;
-                getPoi(mapLocation);
+                if (s.length() > 0) {
+                    isFirst = false;
+                    isRefresh = true;
+                    currentMapLocation = null;
+                    getPoi(null);
+                } else if (s.length() == 0) {
+                    isFirst = true;
+                    isRefresh = true;
+                    getPoi(tempMapLocation);
+                }
             }
         });
     }
@@ -111,68 +155,19 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         if (aMap == null) {
             aMap = mapView.getMap();
         }
-        uiSettings = aMap.getUiSettings();
-        uiSettings.setZoomControlsEnabled(false);
-        aMap.setMyLocationEnabled(true);
-
-        aMapLocationClient = new AMapLocationClient(this);
-        aMapLocationClientOption = new AMapLocationClientOption();
-        aMapLocationClientOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
-        aMapLocationClientOption.setInterval(5000);
-        aMapLocationClient.setLocationOption(aMapLocationClientOption);
-        //显示定位标记
-        MyLocationStyle myLocationStyle = new MyLocationStyle();
-        Bitmap iconBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.location);
-        myLocationStyle.myLocationIcon(BitmapDescriptorFactory.fromBitmap(iconBitmap));
-        //透明定位精度圆圈
-        myLocationStyle.strokeWidth(0);
-        myLocationStyle.strokeColor(Color.TRANSPARENT);
-        myLocationStyle.radiusFillColor(Color.TRANSPARENT);
-        //定位间隔
-        myLocationStyle.interval(5000);
-        //连续定位、蓝点不会移动到地图中心点，定位点依照设备方向旋转，并且蓝点会跟随设备移动。
-        myLocationStyle.myLocationType(MyLocationStyle.LOCATION_TYPE_LOCATE);
-        aMap.setMyLocationStyle(myLocationStyle);
-        aMapLocationClient.startLocation();
-        aMapLocationClient.setLocationListener(new AMapLocationListener() {
-            @Override
-            public void onLocationChanged(AMapLocation aMapLocation) {
-                init(aMapLocation);
-                if (locationChangedListener == null) {
-                    return;
-                }
-
-                if (aMapLocation.getErrorCode() == AMapLocation.LOCATION_SUCCESS) {
-                    locationChangedListener.onLocationChanged(aMapLocation);
-                }
-            }
-        });
+        aMap.setOnMapLoadedListener(this);
+        aMap.setOnMapClickListener(this);
+        aMap.setLocationSource(this);// 设置定位监听
+        aMap.getUiSettings().setMyLocationButtonEnabled(true);// 设置默认定位按钮是否显示
+        aMap.setMyLocationEnabled(true);// 设置为true表示显示定位层并可触发定位，false表示隐藏定位层并不可触发定位，默认是false
     }
 
-    private void init(AMapLocation aMapLocation) {
-        //位置
-        LatLng latLng = new LatLng(aMapLocation.getLatitude(), aMapLocation.getLongitude());
-
-        //地图view中心点和缩放级别设置
-        aMap.moveCamera(CameraUpdateFactory.changeLatLng(latLng));
-        aMap.moveCamera(CameraUpdateFactory.zoomTo(aMap.getMaxZoomLevel() - 3));
-        //添加marker
-        MarkerOptions markerOptions = new MarkerOptions();
-        markerOptions.position(latLng);
-        Bitmap companyIcon = BitmapFactory.decodeResource(getResources(), R.mipmap.location);
-        markerOptions.icon(BitmapDescriptorFactory.fromBitmap(companyIcon));
-        //设置marker锚点偏移量
-        markerOptions.anchor(0.5f, 0.5f);
-        aMap.addMarker(markerOptions);
-        //添加圆形面范围标识
-        CircleOptions circleOptions = new CircleOptions();
-        circleOptions.center(latLng);
-        circleOptions.strokeWidth(0);
-        circleOptions.fillColor(getResources().getColor(R.color.gray66));
-        circleOptions.radius(70);
-        aMap.addCircle(circleOptions);
-
-        getPoi(aMapLocation);
+    private Marker addMarker(LatLng point) {
+        Bitmap bMap = BitmapFactory.decodeResource(this.getResources(),
+                R.mipmap.location);
+        BitmapDescriptor des = BitmapDescriptorFactory.fromBitmap(bMap);
+        return aMap.addMarker(new MarkerOptions().position(point).icon(des)
+                .anchor(0.5f, 0.5f));
     }
 
     private String getKey() {
@@ -180,7 +175,6 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     }
 
     private void getPoi(AMapLocation aMapLocation) {
-        mapLocation = aMapLocation;
         PoiSearch.Query query;
         if (aMapLocation != null) {
             query = new PoiSearch.Query(getKey(), "", aMapLocation.getCityCode());
@@ -262,8 +256,17 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        //在activity执行onDestroy时执行mMapView.onDestroy()，销毁地图
         mapView.onDestroy();
+        if (mTimerTask != null) {
+            mTimerTask.cancel();
+            mTimerTask = null;
+        }
+        try {
+            mTimer.cancel();
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+        deactivate();
     }
 
     @Override
@@ -305,25 +308,48 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
                 etSearch.setText("");
                 isFirst = true;
                 isRefresh = true;
-                getPoi(mapLocation);
+                getPoi(currentMapLocation);
                 break;
         }
     }
 
     @Override
     public void activate(OnLocationChangedListener onLocationChangedListener) {
-        locationChangedListener = onLocationChangedListener;
+        mListener = onLocationChangedListener;
+        startLocation();
     }
 
     @Override
     public void deactivate() {
-        locationChangedListener = null;
-        if (aMapLocationClient != null) {
-            aMapLocationClient.stopLocation();
-            aMapLocationClient.onDestroy();
+        mListener = null;
+        if (mLocationClient != null) {
+            mLocationClient.stopLocation();
+            mLocationClient.onDestroy();
         }
-        aMapLocationClient = null;
+        mLocationClient = null;
     }
+
+    /**
+     * 开始定位。
+     */
+    private void startLocation() {
+        if (mLocationClient == null) {
+            mLocationClient = new AMapLocationClient(this);
+            AMapLocationClientOption mLocationOption = new AMapLocationClientOption();
+            // 设置定位监听
+            mLocationClient.setLocationListener(this);
+            // 设置为高精度定位模式
+            mLocationOption.setLocationMode(AMapLocationClientOption.AMapLocationMode.Hight_Accuracy);
+            //设置为单次定位
+            mLocationOption.setOnceLocation(true);
+            // 设置定位参数
+            mLocationClient.setLocationOption(mLocationOption);
+            mLocationClient.startLocation();
+        } else {
+            mLocationClient.startLocation();
+        }
+    }
+
 
     @Override
     public void onPoiSearched(PoiResult poiResult, int i) {
@@ -334,6 +360,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
             }
         }
         RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
+        recyclerView.setPullRefreshEnabled(false);
     }
 
     private LocationEntity poiToLocationItem(PoiItem poiItem) {
@@ -361,13 +388,149 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     public void onLoadMore() {
         isRefresh = false;
         page = page + 1;
-        getPoi(mapLocation);
+        if (isFirst) {
+            getPoi(tempMapLocation);
+        } else {
+            getPoi(currentMapLocation);
+        }
     }
 
     @Override
     public void clickItem(PoiItem poiItem) {
-        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(poiItem.getLatLonPoint().getLatitude(), poiItem.getLatLonPoint().getLongitude()), 20));
-        isClick = true;
         locationEntity = poiToLocationItem(poiItem);
+        LatLng myLocation = new LatLng(poiItem.getLatLonPoint().getLatitude(), poiItem.getLatLonPoint().getLongitude());
+        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 19));
+        addLocationMarker(poiItem.getLatLonPoint().getLatitude(), poiItem.getLatLonPoint().getLongitude());
+        isClick = true;
+    }
+
+    @Override
+    public void onMapLoaded() {
+
+    }
+
+    @Override
+    public void onMapClick(LatLng latLng) {
+
+    }
+
+    @Override
+    public void onLocationChanged(AMapLocation aMapLocation) {
+        if (mListener != null && aMapLocation != null) {
+            if (mTimerTask != null) {
+                mTimerTask.cancel();
+                mTimerTask = null;
+            }
+            if (aMapLocation.getErrorCode() == 0) {
+                LatLng myLocation = new LatLng(aMapLocation.getLatitude(),
+                        aMapLocation.getLongitude());
+                aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(myLocation, 19));
+                addLocationMarker(aMapLocation);
+                //获取周边位置
+                tempMapLocation = aMapLocation;
+                currentMapLocation = aMapLocation;
+                getPoi(aMapLocation);
+            } else {
+                String errText = "定位失败," + aMapLocation.getErrorCode() + ": "
+                        + aMapLocation.getErrorInfo();
+                Toast.makeText(this, errText, Toast.LENGTH_SHORT).show();
+                Log.e("AmapErr", errText);
+            }
+        }
+    }
+
+    private void addLocationMarker(AMapLocation aMapLocation) {
+        lat = aMapLocation.getLatitude();
+        lng = aMapLocation.getLongitude();
+        address = aMapLocation.getAddress();
+        LatLng myLocation = new LatLng(lat, lng);
+        float accuracy = aMapLocation.getAccuracy();
+        if (accuracy > 15) {
+            accuracy = 15;
+        }
+        if (locMarker == null) {
+            locMarker = addMarker(myLocation);
+            ac = aMap.addCircle(new CircleOptions().center(myLocation)
+                    .fillColor(Color.argb(100, 255, 218, 185)).radius(accuracy)
+                    .strokeColor(Color.argb(255, 255, 228, 185)).strokeWidth(5));
+            c = aMap.addCircle(new CircleOptions().center(myLocation)
+                    .fillColor(Color.argb(70, 255, 218, 185))
+                    .radius(accuracy).strokeColor(Color.argb(255, 255, 228, 185))
+                    .strokeWidth(0));
+        } else {
+            locMarker.setPosition(myLocation);
+            ac.setCenter(myLocation);
+            ac.setRadius(accuracy);
+            c.setCenter(myLocation);
+            c.setRadius(accuracy);
+        }
+        scaleCircle(c);
+    }
+
+    private void addLocationMarker(double lat, double lng) {
+        LatLng myLocation = new LatLng(lat, lng);
+        float accuracy = 15;
+        if (locMarker == null) {
+            locMarker = addMarker(myLocation);
+            ac = aMap.addCircle(new CircleOptions().center(myLocation)
+                    .fillColor(Color.argb(100, 255, 218, 185)).radius(accuracy)
+                    .strokeColor(Color.argb(255, 255, 228, 185)).strokeWidth(5));
+            c = aMap.addCircle(new CircleOptions().center(myLocation)
+                    .fillColor(Color.argb(70, 255, 218, 185))
+                    .radius(accuracy).strokeColor(Color.argb(255, 255, 228, 185))
+                    .strokeWidth(0));
+        } else {
+            locMarker.setPosition(myLocation);
+            ac.setCenter(myLocation);
+            ac.setRadius(accuracy);
+            c.setCenter(myLocation);
+            c.setRadius(accuracy);
+        }
+        scaleCircle(c);
+    }
+
+    public void scaleCircle(final Circle circle) {
+        start = SystemClock.uptimeMillis();
+        mTimerTask = new circleTask(circle, 1000);
+        mTimer.schedule(mTimerTask, 0, 30);
+    }
+
+    private class circleTask extends TimerTask {
+        private double r;
+        private Circle circle;
+        private long duration = 1000;
+
+        circleTask(Circle circle, long rate) {
+            this.circle = circle;
+            this.r = circle.getRadius();
+            if (rate > 0) {
+                this.duration = rate;
+            }
+        }
+
+        @Override
+        public void run() {
+            try {
+                long elapsed = SystemClock.uptimeMillis() - start;
+                float input = (float) elapsed / duration;
+                //外圈循环缩放
+                float t = interpolator.getInterpolation((float) (input - 0.25));
+                double r1 = (t + 2) * r;
+                //外圈放大后消失
+                circle.setRadius(r1);
+                if (input > 2) {
+                    start = SystemClock.uptimeMillis();
+                }
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        //可在此继续其他操作。
+        initMap();
     }
 }
