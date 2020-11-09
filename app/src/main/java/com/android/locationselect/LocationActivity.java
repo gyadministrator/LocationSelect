@@ -7,22 +7,16 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.Window;
-import android.view.WindowManager;
 import android.view.animation.CycleInterpolator;
 import android.view.animation.Interpolator;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -41,6 +35,7 @@ import com.amap.api.maps.LocationSource;
 import com.amap.api.maps.MapView;
 import com.amap.api.maps.model.BitmapDescriptor;
 import com.amap.api.maps.model.BitmapDescriptorFactory;
+import com.amap.api.maps.model.CameraPosition;
 import com.amap.api.maps.model.Circle;
 import com.amap.api.maps.model.CircleOptions;
 import com.amap.api.maps.model.LatLng;
@@ -52,16 +47,16 @@ import com.amap.api.services.poisearch.PoiResult;
 import com.amap.api.services.poisearch.PoiSearch;
 import com.android.locationselect.adapter.LocationItemAdapter;
 import com.android.locationselect.entity.LocationEntity;
-import com.android.locationselect.util.AndroidStatusBarUtils;
 import com.android.locationselect.util.RecyclerUtils;
 import com.google.gson.Gson;
+import com.gyf.immersionbar.ImmersionBar;
 import com.jcodecraeer.xrecyclerview.XRecyclerView;
 
 import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener, AMap.OnMapLoadedListener, AMap.OnMapClickListener, AMapLocationListener {
+public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener, AMap.OnMapLoadedListener, AMap.OnMapClickListener, AMapLocationListener, AMap.OnMarkerDragListener, AMap.OnCameraChangeListener {
     private MapView mapView;
     private Button btnBack;
     private Button btnOk;
@@ -103,7 +98,12 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_location);
-        fullScreen(R.color.white);
+        ImmersionBar immersionBar = ImmersionBar.with(this);
+        immersionBar.barColor(R.color.white);
+        immersionBar.fitsSystemWindows(true);
+        immersionBar.autoDarkModeEnable(true);
+        immersionBar.keyboardEnable(true);
+        immersionBar.init();
         requestPermission();
         initView();
         initData();
@@ -157,6 +157,8 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         }
         aMap.setOnMapLoadedListener(this);
         aMap.setOnMapClickListener(this);
+        aMap.setOnMarkerDragListener(this);
+        aMap.setOnCameraChangeListener(this);
         aMap.setLocationSource(this);// 设置定位监听
         aMap.getUiSettings().setMyLocationButtonEnabled(true);// 设置默认定位按钮是否显示
         aMap.setMyLocationEnabled(true);// 设置为true表示显示定位层并可触发定位，false表示隐藏定位层并不可触发定位，默认是false
@@ -192,38 +194,16 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         poiSearch.setOnPoiSearchListener(this);
     }
 
-    /**
-     * 通过设置全屏，设置状态栏透明
-     */
-    protected void fullScreen(int ColorRes) {
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        if (Build.VERSION.SDK_INT <= 20) {
-            //5.0.1以下
-            Window window = getWindow();
-            window.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            ViewGroup decorViewGroup = (ViewGroup) window.getDecorView();
-            View statusBarView = new View(window.getContext());
-            int statusBarHeight = AndroidStatusBarUtils.getStatusBarHeight(this);
-            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, statusBarHeight);
-            params.gravity = Gravity.TOP;
-            statusBarView.setLayoutParams(params);
-            statusBarView.setBackgroundColor(getResources().getColor(ColorRes));
-            decorViewGroup.addView(statusBarView);
-            ViewGroup mContentView = window.findViewById(Window.ID_ANDROID_CONTENT);
-            View mChildView = mContentView.getChildAt(0);
-            if (mChildView != null) {
-                //注意不是设置 ContentView 的 FitsSystemWindows, 而是设置 ContentView 的第一个子 View . 预留出系统 View 的空间.
-                mChildView.setFitsSystemWindows(true);
-            }
-        } else {
-            Window window = getWindow();
-            //取消设置透明状态栏,使 ContentView 内容不再覆盖状态栏
-            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            //需要设置这个 flag 才能调用 setStatusBarColor 来设置状态栏颜色
-            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            //设置状态栏颜色
-            window.setStatusBarColor(getResources().getColor(ColorRes));
-        }
+    private void getPoiDrag(double lat, double lng) {
+        PoiSearch.Query query;
+        query = new PoiSearch.Query(getKey(), "", getKey());
+        query.setPageSize(10);// 设置每页最多返回多少条poiItem
+        query.setPageNum(page);//设置查询页码
+        PoiSearch poiSearch = new PoiSearch(this, query);
+        poiSearch.setBound(new PoiSearch.SearchBound(new LatLonPoint(lat,
+                lng), 1000));//设置周边搜索的中心点以及半径
+        poiSearch.searchPOIAsyn();
+        poiSearch.setOnPoiSearchListener(this);
     }
 
     private void initData() {
@@ -300,9 +280,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
                 Intent intent = new Intent();
                 intent.putExtra(jsonKey, new Gson().toJson(locationEntity));
                 setResult(requestCode, intent);
-                Toast.makeText(this, new Gson().toJson(locationEntity), Toast.LENGTH_SHORT).show();
-                Log.e("result", "onClick: " + new Gson().toJson(locationEntity));
-                //finish();
+                finish();
                 break;
             case R.id.btn_cancel:
                 etSearch.setText("");
@@ -493,6 +471,51 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         start = SystemClock.uptimeMillis();
         mTimerTask = new circleTask(circle, 1000);
         mTimer.schedule(mTimerTask, 0, 30);
+    }
+
+    @Override
+    public void onMarkerDragStart(Marker marker) {
+
+    }
+
+    @Override
+    public void onMarkerDrag(Marker marker) {
+        LatLng latLng = marker.getPosition();
+        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
+        addLocationMarker(latLng.latitude, latLng.longitude);
+        double latitude = latLng.latitude;
+        double longitude = latLng.longitude;
+        isFirst = false;
+        isRefresh = true;
+        currentMapLocation = null;
+        getPoiDrag(latitude, longitude);
+    }
+
+    @Override
+    public void onMarkerDragEnd(Marker marker) {
+        // 销毁定位
+        if (mLocationClient != null) {
+            mLocationClient.stopLocation();
+            mLocationClient.onDestroy();
+        }
+    }
+
+    @Override
+    public void onCameraChange(CameraPosition cameraPosition) {
+
+    }
+
+    @Override
+    public void onCameraChangeFinish(CameraPosition cameraPosition) {
+        LatLng latLng = cameraPosition.target;
+        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
+        addLocationMarker(latLng.latitude, latLng.longitude);
+        double latitude = latLng.latitude;
+        double longitude = latLng.longitude;
+        isFirst = false;
+        isRefresh = true;
+        currentMapLocation = null;
+        getPoiDrag(latitude, longitude);
     }
 
     private class circleTask extends TimerTask {

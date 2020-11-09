@@ -54,6 +54,7 @@ public class LocationItemAdapter extends BaseAdapter {
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, final int position) {
         super.onBindViewHolder(holder, position);
         if (holder instanceof ViewHolder) {
+            currentPosition = 0;
             ViewHolder viewHolder = (ViewHolder) holder;
             if (position == currentPosition) {
                 viewHolder.ivSelect.setVisibility(View.VISIBLE);
