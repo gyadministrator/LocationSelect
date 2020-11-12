@@ -447,7 +447,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
     private void addLocationMarker(double lat, double lng) {
         LatLng myLocation = new LatLng(lat, lng);
-        float accuracy = 15;
+        float accuracy = 5;
         if (locMarker == null) {
             locMarker = addMarker(myLocation);
             ac = aMap.addCircle(new CircleOptions().center(myLocation)
@@ -502,7 +502,9 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
     @Override
     public void onCameraChange(CameraPosition cameraPosition) {
-
+        LatLng latLng = cameraPosition.target;
+        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
+        addLocationMarker(latLng.latitude, latLng.longitude);
     }
 
     @Override
