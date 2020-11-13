@@ -207,9 +207,9 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     private void getPoi(AMapLocation aMapLocation) {
         PoiSearch.Query query;
         if (aMapLocation != null) {
-            query = new PoiSearch.Query(getKey(), poi, aMapLocation.getCityCode());
+            query = new PoiSearch.Query(getKey(), "", aMapLocation.getCityCode());
         } else {
-            query = new PoiSearch.Query(getKey(), poi, "");
+            query = new PoiSearch.Query(getKey(), "", "");
         }
         query.setPageSize(10);// 设置每页最多返回多少条poiItem
         query.setPageNum(page);//设置查询页码
