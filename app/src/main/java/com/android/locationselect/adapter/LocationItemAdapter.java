@@ -68,7 +68,11 @@ public class LocationItemAdapter extends BaseAdapter {
                 if (!TextUtils.isEmpty(title)) {
                     viewHolder.tvTitle.setText(title);
                 }
-                viewHolder.tvDesc.setText(Math.abs(distance) + "m " + poiItem.getProvinceName() + poiItem.getCityName() + poiItem.getTitle());
+                if (!TextUtils.isEmpty(poiItem.getProvinceName())) {
+                    viewHolder.tvDesc.setText(Math.abs(distance) + "m " + poiItem.getProvinceName() + poiItem.getCityName() + poiItem.getTitle());
+                } else {
+                    viewHolder.tvDesc.setText(poiItem.getSnippet());
+                }
             }
             viewHolder.llContent.setOnClickListener(new View.OnClickListener() {
                 @Override

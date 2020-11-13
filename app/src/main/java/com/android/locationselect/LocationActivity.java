@@ -43,6 +43,9 @@ import com.amap.api.maps.model.Marker;
 import com.amap.api.maps.model.MarkerOptions;
 import com.amap.api.services.core.LatLonPoint;
 import com.amap.api.services.core.PoiItem;
+import com.amap.api.services.help.Inputtips;
+import com.amap.api.services.help.InputtipsQuery;
+import com.amap.api.services.help.Tip;
 import com.amap.api.services.poisearch.PoiResult;
 import com.amap.api.services.poisearch.PoiSearch;
 import com.android.locationselect.adapter.LocationItemAdapter;
@@ -55,10 +58,11 @@ import com.gyf.immersionbar.ImmersionBar;
 import com.jcodecraeer.xrecyclerview.XRecyclerView;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
-public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener, AMap.OnMapLoadedListener, AMap.OnMapClickListener, AMapLocationListener, AMap.OnMarkerDragListener, AMap.OnCameraChangeListener {
+public class LocationActivity extends AppCompatActivity implements View.OnClickListener, LocationSource, PoiSearch.OnPoiSearchListener, XRecyclerView.LoadingListener, LocationItemAdapter.OnLocationItemClickListener, AMap.OnMapLoadedListener, AMap.OnMapClickListener, AMapLocationListener, AMap.OnMarkerDragListener, AMap.OnCameraChangeListener, Inputtips.InputtipsListener {
     private MapView mapView;
     private Button btnBack;
     private Button btnOk;
@@ -96,6 +100,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
             Manifest.permission.READ_PHONE_STATE};
     private int permissionCode = 1001;
     private String poi;
+    private boolean isNoData=false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -365,8 +370,24 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
                 locationEntity = poiToLocationItem(pois.get(0));
             }
         }
-        RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
-        recyclerView.setPullRefreshEnabled(false);
+        if (pois!=null&&pois.size()>0) {
+            RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
+            recyclerView.setPullRefreshEnabled(false);
+        }else {
+            isNoData=true;
+            recyclerView.setPullRefreshEnabled(false);
+            recyclerView.setLoadingMoreEnabled(false);
+            poiTip();
+        }
+    }
+
+    private void poiTip() {
+        //第二个参数传入null或者“”代表在全国进行检索，否则按照传入的city进行检索
+        InputtipsQuery query = new InputtipsQuery(getKey(), "");
+        query.setCityLimit(true);//限制在当前城市
+        Inputtips inputTips = new Inputtips(this, query);
+        inputTips.setInputtipsListener(this);
+        inputTips.requestInputtipsAsyn();
     }
 
     private LocationEntity poiToLocationItem(PoiItem poiItem) {
@@ -546,6 +567,29 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         isRefresh = true;
         currentMapLocation = null;
         getPoiDrag(latitude, longitude);
+    }
+
+    @Override
+    public void onGetInputtips(List<Tip> list, int i) {
+        if (i==1000) {
+            ArrayList<PoiItem> pois=tipToPoi(list);
+            RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
+            recyclerView.setLoadingMoreEnabled(false);
+            recyclerView.setPullRefreshEnabled(false);
+        }
+    }
+
+    private ArrayList<PoiItem> tipToPoi(List<Tip> list) {
+        ArrayList<PoiItem> poiItems = new ArrayList<>();
+        if (list!=null&&list.size()>0){
+            for (Tip tip:list){
+                if (tip!=null){
+                    PoiItem poiItem = new PoiItem(tip.getPoiID(), tip.getPoint(), tip.getName(), tip.getDistrict());
+                    poiItems.add(poiItem);
+                }
+            }
+        }
+        return poiItems;
     }
 
     private class circleTask extends TimerTask {
