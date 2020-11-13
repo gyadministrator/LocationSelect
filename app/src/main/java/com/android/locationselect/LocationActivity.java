@@ -47,6 +47,8 @@ import com.amap.api.services.poisearch.PoiResult;
 import com.amap.api.services.poisearch.PoiSearch;
 import com.android.locationselect.adapter.LocationItemAdapter;
 import com.android.locationselect.entity.LocationEntity;
+import com.android.locationselect.entity.PoiEntity;
+import com.android.locationselect.util.ExcelUtil;
 import com.android.locationselect.util.RecyclerUtils;
 import com.google.gson.Gson;
 import com.gyf.immersionbar.ImmersionBar;
@@ -93,11 +95,13 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.READ_PHONE_STATE};
     private int permissionCode = 1001;
+    private String poi;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_location);
+        readExcel();
         ImmersionBar immersionBar = ImmersionBar.with(this);
         immersionBar.barColor(R.color.white);
         immersionBar.fitsSystemWindows(true);
@@ -111,6 +115,30 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
         mapView.onCreate(savedInstanceState);
         initMap();
         initSearch();
+    }
+
+    private void readExcel() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                ArrayList<PoiEntity> list = ExcelUtil.getXlsData(LocationActivity.this, "poi.xls", 0);
+                StringBuilder stringBuilder = new StringBuilder();
+                if (list != null && list.size() > 0) {
+                    for (int i = 0; i < list.size(); i++) {
+                        PoiEntity poiEntity = list.get(i);
+                        if (poiEntity != null) {
+                            String code = poiEntity.getCode();
+                            stringBuilder.append(code);
+                            if (i != list.size() - 1) {
+                                stringBuilder.append("|");
+                            }
+                        }
+                    }
+                }
+                poi = stringBuilder.toString();
+                Log.e("result", "run: " + poi);
+            }
+        }).start();
     }
 
     private void requestPermission() {
@@ -179,9 +207,9 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     private void getPoi(AMapLocation aMapLocation) {
         PoiSearch.Query query;
         if (aMapLocation != null) {
-            query = new PoiSearch.Query(getKey(), "", aMapLocation.getCityCode());
+            query = new PoiSearch.Query(getKey(), poi, aMapLocation.getCityCode());
         } else {
-            query = new PoiSearch.Query(getKey(), "", getKey());
+            query = new PoiSearch.Query(getKey(), poi, "");
         }
         query.setPageSize(10);// 设置每页最多返回多少条poiItem
         query.setPageNum(page);//设置查询页码

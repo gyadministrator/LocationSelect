@@ -54,4 +54,5 @@ dependencies {
     implementation'com.amap.api:search:7.6.0'
     // 基础依赖包，必须要依赖
     implementation 'com.gyf.immersionbar:immersionbar:3.0.0'
+    implementation 'net.sourceforge.jexcelapi:jxl:2.6.12'
 }
