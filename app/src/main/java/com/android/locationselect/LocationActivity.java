@@ -100,7 +100,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
             Manifest.permission.READ_PHONE_STATE};
     private int permissionCode = 1001;
     private String poi;
-    private boolean isNoData=false;
+    private boolean isNoData = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -170,6 +170,7 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
             @Override
             public void afterTextChanged(Editable s) {
+                isClick = false;
                 if (s.length() > 0) {
                     isFirst = false;
                     isRefresh = true;
@@ -370,11 +371,11 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
                 locationEntity = poiToLocationItem(pois.get(0));
             }
         }
-        if (pois!=null&&pois.size()>0) {
+        if (pois != null && pois.size() > 0) {
             RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
             recyclerView.setPullRefreshEnabled(false);
-        }else {
-            isNoData=true;
+        } else {
+            isNoData = true;
             recyclerView.setPullRefreshEnabled(false);
             recyclerView.setLoadingMoreEnabled(false);
             poiTip();
@@ -552,27 +553,30 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
     @Override
     public void onCameraChange(CameraPosition cameraPosition) {
         LatLng latLng = cameraPosition.target;
-        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
+        //aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
         addLocationMarker(latLng.latitude, latLng.longitude);
     }
 
     @Override
     public void onCameraChangeFinish(CameraPosition cameraPosition) {
         LatLng latLng = cameraPosition.target;
-        aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
+        //aMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 19));
         addLocationMarker(latLng.latitude, latLng.longitude);
         double latitude = latLng.latitude;
         double longitude = latLng.longitude;
         isFirst = false;
         isRefresh = true;
         currentMapLocation = null;
-        getPoiDrag(latitude, longitude);
+        if (!isClick) {
+            getPoiDrag(latitude, longitude);
+        }
+        isClick = false;
     }
 
     @Override
     public void onGetInputtips(List<Tip> list, int i) {
-        if (i==1000) {
-            ArrayList<PoiItem> pois=tipToPoi(list);
+        if (i == 1000) {
+            ArrayList<PoiItem> pois = tipToPoi(list);
             RecyclerUtils.setRecyclerViewData(isRefresh, pois, recyclerView, locationItemAdapter, new LinearLayoutManager(this), this);
             recyclerView.setLoadingMoreEnabled(false);
             recyclerView.setPullRefreshEnabled(false);
@@ -581,9 +585,9 @@ public class LocationActivity extends AppCompatActivity implements View.OnClickL
 
     private ArrayList<PoiItem> tipToPoi(List<Tip> list) {
         ArrayList<PoiItem> poiItems = new ArrayList<>();
-        if (list!=null&&list.size()>0){
-            for (Tip tip:list){
-                if (tip!=null){
+        if (list != null && list.size() > 0) {
+            for (Tip tip : list) {
+                if (tip != null) {
                     PoiItem poiItem = new PoiItem(tip.getPoiID(), tip.getPoint(), tip.getName(), tip.getDistrict());
                     poiItems.add(poiItem);
                 }
